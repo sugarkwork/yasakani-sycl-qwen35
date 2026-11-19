@@ -13,6 +13,8 @@ DLLはモデルサイズとGPUアーキテクチャを指定してビルドし�
 
 RTX 5060 Tiの長文読解では、SYCL版の生成速度は4Bで **161.54 / 140.44 tok/s**、9Bで **102.89 / 85.26 tok/s** でした（speed / quality）。RTX 3060での4B実測は **114.50 / 104.18 tok/s** です。CUDA版との比較、TTFT、VRAM使用量、正解数は[ベンチマーク詳細](docs/QWEN35-BENCHMARKS.md)にまとめています。
 
-リポジトリにはソース、ベンチマーク入力、測定記録を収録しています。[変換スクリプト](tools/convert/convert_qwen35.py)で4B・9Bそれぞれのspeed／qualityパックを作れます。同じパックをSYCL版とCUDA版で使えます。ビルド、モデル変換、C APIの使い方は[手順書](docs/WINDOWS-QWEN35.md)を参照してください。
+リポジトリにはソース、ベンチマーク入力、測定記録を収録しています。speed／qualityパックはHugging Faceから入手できます。 [Qwen3.5-4B](https://huggingface.co/sugarknight/Qwen3.5-4B-YASAKANI) · [Qwen3.5-9B](https://huggingface.co/sugarknight/Qwen3.5-9B-YASAKANI)
+
+[変換スクリプト](tools/convert/convert_qwen35.py)で4B・9Bそれぞれのspeed／qualityパックを作れます。同じパックをSYCL版とCUDA版で使えます。ビルド、モデル変換、C APIの使い方は[手順書](docs/WINDOWS-QWEN35.md)を参照してください。
 
 上流の[Apache-2.0ライセンス](LICENSE)、[NOTICE](NOTICE)、[第三者の帰属表示](THIRD_PARTY_NOTICES.md)を引き継いでいます。元モデルのライセンスはQwenの各配布元を参照してください。
