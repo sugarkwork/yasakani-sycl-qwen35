@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 the YASAKANI authors
+# Modified in this fork to convert the Qwen3.5-4B/9B text checkpoints.
 """yskn_convert.py - make a YASAKANI model file (.yskn) from the original checkpoint of Qwen3.8-27B.
 
   python yskn_convert.py selftest
@@ -191,6 +192,12 @@ class Checkpoint:
             buf = bytearray(f.read(b1 - b0))
         return torch.frombuffer(buf, dtype=dt[e["dtype"]]).reshape(e["shape"]).clone()
 
+    def output_weight(self):
+        name = "lm_head.weight"
+        if name not in self.index and self.config.get("tie_word_embeddings", False):
+            name = PREFIX + "embed_tokens.weight"
+        return self.get(name)
+
     def layer_state(self, i):
         p = "%slayers.%d." % (PREFIX, i)
         return {k[len(p):]: self.get(k) for k in self.index if k.startswith(p)}
@@ -242,7 +249,7 @@ class Layers:
         norm.load_state_dict({"weight": ckpt.get(PREFIX + "norm.weight")}, assign=True)
         norm = norm.cuda().eval()
         norm.requires_grad_(False)
-        return norm, ckpt.get("lm_head.weight").cuda().float()
+        return norm, ckpt.output_weight().cuda().float()
 
 
 # ---------------------------------------------------------------------------------------------------------------- statistics
@@ -778,7 +785,7 @@ def convert_head(a, ckpt, log, search, tables, K=8, chunk=8192):
     t0 = time.perf_counter()
     Hm = torch.load(stat_path).cuda()
     n = Hm.shape[0]
-    W = ckpt.get("lm_head.weight")
+    W = ckpt.output_weight()
     V = W.shape[0]
     assert W.shape[1] == n
     si = torch.from_numpy(sign_vectors(n, 0)[0]).cuda()
@@ -1045,6 +1052,8 @@ def cmd_assemble(a):
         small = SMALL_LINEAR if cfg["layer_types"][i] == "linear_attention" else SMALL_FULL
         for s in small:
             v = ckpt.get("%slayers.%d.%s" % (PREFIX, i, s))
+            if v.dtype == torch.float32 and s in ("linear_attn.A_log", "linear_attn.norm.weight"):
+                v = v.to(torch.bfloat16)
             assert v.dtype == torch.bfloat16
             vectors.append(dict(name="layers.%d.%s" % (i, SMALL_NAME[s]), off=w.section(v.contiguous().view(torch.int16).numpy()),
                                 n=int(v.numel()), dtype="bf16"))

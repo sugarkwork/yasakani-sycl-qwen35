@@ -1,4 +1,8 @@
 /build/
+/build-*/
+/.local/
+/assets/
+/benchmark-output/
 /tools/convert/native/build/
 __pycache__/
 *.pyc

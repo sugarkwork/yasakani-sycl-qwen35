@@ -1,3 +1,5 @@
 # Every file is kept byte for byte: bench/SHA256SUMS.txt lists the checksums of the measurement records,
 # so line endings must not be converted on checkout.
 * -text
+bench/qwen35/prompts.json whitespace=cr-at-eol
+docs/huggingface/*/LICENSE whitespace=cr-at-eol

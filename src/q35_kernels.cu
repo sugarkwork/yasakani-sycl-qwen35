@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 the YASAKANI authors
+// Modified in this fork to handle the Qwen3.5-4B/9B tensor layout.
 #include "kvx_codec.cuh"
 #include "pdl.cuh"
 #include <cuda_fp16.h>
@@ -229,7 +230,17 @@ __global__ void __launch_bounds__(512) q35_residual_kernel(Q35ResNormArgs A) {
 void launch_q35_residual(const Q35ResNormArgs& A, cudaStream_t st) { launch_k(q35_residual_kernel, dim3(A.N / 512, A.M), dim3(512), 0, st, A); }
 
 
-__device__ __forceinline__ uint4 q35_ab_x(const Q35AbArgs& A, int tok, int idx) { return __ldcg(reinterpret_cast<const uint4*>(A.xn + (size_t)tok * Q35_H) + idx); }
+constexpr int Q35_AB_VECS = (Q35_H + 1023) / 1024;
+
+__device__ __forceinline__ uint4 q35_ab_x(const Q35AbArgs& A, int tok, int idx) {
+  if (Q35_H % 1024 && idx >= Q35_H / 8) return make_uint4(0, 0, 0, 0);
+  return __ldcg(reinterpret_cast<const uint4*>(A.xn + (size_t)tok * Q35_H) + idx);
+}
+
+__device__ __forceinline__ uint4 q35_ab_w(const uint16_t* weights, int idx) {
+  if (Q35_H % 1024 && idx >= Q35_H / 8) return make_uint4(0, 0, 0, 0);
+  return __ldg(reinterpret_cast<const uint4*>(weights) + idx);
+}
 
 
 
@@ -402,27 +413,27 @@ __global__ void __launch_bounds__(256) q35_gdn_out_pf_kernel(Q35GdnOutArgs A) {
 template <int R> __global__ void __launch_bounds__(128) q35_ab_pf_kernel(Q35AbArgs A) {
   __shared__ float s_red[16][R][4], s_rq[16];
   const int r0 = blockIdx.x * R, tid = threadIdx.x, t0 = blockIdx.y * 16, nt = min(16, A.M - t0);
-  uint4 wv[R][5];
+  uint4 wv[R][Q35_AB_VECS];
   #pragma unroll
-  for (int i = 0; i < R; ++i) { const int r = r0 + i; const uint16_t* w = r < 48 ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - 48) * Q35_H;
+  for (int i = 0; i < R; ++i) { const int r = r0 + i; const uint16_t* w = r < Q35_GV ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - Q35_GV) * Q35_H;
     #pragma unroll
-    for (int j = 0; j < 5; ++j) wv[i][j] = __ldg(reinterpret_cast<const uint4*>(w) + tid + 128 * j); }
+    for (int j = 0; j < Q35_AB_VECS; ++j) wv[i][j] = q35_ab_w(w, tid + 128 * j); }
   pdl_wait(); pdl_trigger();
   if (A.S && tid < nt) s_rq[tid] = q35_xsm_r(A.S + (size_t)(t0 + tid) * Q35_SST, A.eps);
-  uint4 xv[5];
+  uint4 xv[Q35_AB_VECS];
   #pragma unroll
-  for (int j = 0; j < 5; ++j) xv[j] = q35_ab_x(A, t0, tid + 128 * j);
+  for (int j = 0; j < Q35_AB_VECS; ++j) xv[j] = q35_ab_x(A, t0, tid + 128 * j);
   for (int u = 0; u < nt; ++u) {
-    uint4 xn[5];
+    uint4 xn[Q35_AB_VECS];
     if (u + 1 < nt) {
       #pragma unroll
-      for (int j = 0; j < 5; ++j) xn[j] = q35_ab_x(A, t0 + u + 1, tid + 128 * j);
+      for (int j = 0; j < Q35_AB_VECS; ++j) xn[j] = q35_ab_x(A, t0 + u + 1, tid + 128 * j);
     }
     float acc[R];
     #pragma unroll
     for (int i = 0; i < R; ++i) acc[i] = 0.f;
     #pragma unroll
-    for (int j = 0; j < 5; ++j) {
+    for (int j = 0; j < Q35_AB_VECS; ++j) {
       const unsigned xa[4] = {xv[j].x, xv[j].y, xv[j].z, xv[j].w};
       #pragma unroll
       for (int i = 0; i < R; ++i) {
@@ -439,13 +450,13 @@ template <int R> __global__ void __launch_bounds__(128) q35_ab_pf_kernel(Q35AbAr
                                   if ((tid & 31) == 0) s_red[u][i][tid >> 5] = acc[i]; }
     if (u + 1 < nt) {
       #pragma unroll
-      for (int j = 0; j < 5; ++j) xv[j] = xn[j];
+      for (int j = 0; j < Q35_AB_VECS; ++j) xv[j] = xn[j];
     }
   }
   __syncthreads();
   for (int idx = tid; idx < nt * R; idx += 128) { const int u = idx / R, i = idx % R;
     const float sum = __fadd_rn(__fadd_rn(__fadd_rn(s_red[u][i][0], s_red[u][i][1]), s_red[u][i][2]), s_red[u][i][3]);
-    A.ab[(size_t)(t0 + u) * 96 + r0 + i] = rbf(A.S ? __fmul_rn(sum, s_rq[u]) : sum); }
+    A.ab[(size_t)(t0 + u) * Q35_AB + r0 + i] = rbf(A.S ? __fmul_rn(sum, s_rq[u]) : sum); }
 }
 
 
@@ -723,7 +734,7 @@ __global__ void __launch_bounds__(256) q35_conv_pf_kernel(Q35ConvArgs A) {
       #pragma unroll
       for (int i = 0; i < 4; ++i) A.v[((size_t)t * Q35_GV + head) * Q35_GD + lane + 32 * i] = act[i];
       if (lane == 0) {
-        const float b = A.ab[(size_t)t * 96 + head], a = A.ab[(size_t)t * 96 + 48 + head];
+        const float b = A.ab[(size_t)t * Q35_AB + head], a = A.ab[(size_t)t * Q35_AB + Q35_GV + head];
         A.beta[(size_t)t * Q35_GV + head] = rbf(q35_sigmoid(b));
         const float sp_in = __fadd_rn(a, c_dt);
         A.g[(size_t)t * Q35_GV + head] = __fmul_rn(-q35_exp(c_al), q35_softplus(sp_in));
@@ -748,28 +759,28 @@ __global__ void __launch_bounds__(256) q35_conv_pf_kernel(Q35ConvArgs A) {
 __global__ void __launch_bounds__(128) q35_ab_kernel(Q35AbArgs A) {
   __shared__ float s_red[32][4];
   const int r = blockIdx.x, tid = threadIdx.x, t0 = blockIdx.y * 32, nt = min(32, A.M - t0);
-  const uint16_t* w = r < 48 ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - 48) * Q35_H;
-  uint4 wv[5];
+  const uint16_t* w = r < Q35_GV ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - Q35_GV) * Q35_H;
+  uint4 wv[Q35_AB_VECS];
   #pragma unroll
-  for (int j = 0; j < 5; ++j) wv[j] = __ldg(reinterpret_cast<const uint4*>(w) + tid + 128 * j);
+  for (int j = 0; j < Q35_AB_VECS; ++j) wv[j] = q35_ab_w(w, tid + 128 * j);
   pdl_wait(); pdl_trigger();
   __shared__ float s_rq[32];                                               
   if (A.S && tid < nt) s_rq[tid] = q35_xsm_r(A.S + (size_t)(t0 + tid) * Q35_SST, A.eps);
   for (int u0 = 0; u0 < nt; u0 += 4) {                                   
-    uint4 xv[4][5];
+    uint4 xv[4][Q35_AB_VECS];
     #pragma unroll
     for (int q = 0; q < 4; ++q) {
       if (u0 + q >= nt) break;                                             
       const int tk = t0 + u0 + q;
       #pragma unroll
-      for (int j = 0; j < 5; ++j) xv[q][j] = q35_ab_x(A, tk, tid + 128 * j);
+      for (int j = 0; j < Q35_AB_VECS; ++j) xv[q][j] = q35_ab_x(A, tk, tid + 128 * j);
     }
     #pragma unroll
     for (int q = 0; q < 4; ++q) {
       if (u0 + q >= nt) break;
       float acc = 0.f;
       #pragma unroll
-      for (int j = 0; j < 5; ++j) {
+      for (int j = 0; j < Q35_AB_VECS; ++j) {
         const unsigned wa[4] = {wv[j].x, wv[j].y, wv[j].z, wv[j].w}, xa[4] = {xv[q][j].x, xv[q][j].y, xv[q][j].z, xv[q][j].w};
         #pragma unroll
         for (int e = 0; e < 4; ++e) {
@@ -783,10 +794,10 @@ __global__ void __launch_bounds__(128) q35_ab_kernel(Q35AbArgs A) {
   }
   __syncthreads();
   if (tid < nt) { const float sum = __fadd_rn(__fadd_rn(__fadd_rn(s_red[tid][0], s_red[tid][1]), s_red[tid][2]), s_red[tid][3]);
-    A.ab[(size_t)(t0 + tid) * 96 + r] = rbf(A.S ? __fmul_rn(sum, s_rq[tid]) : sum); }
+    A.ab[(size_t)(t0 + tid) * Q35_AB + r] = rbf(A.S ? __fmul_rn(sum, s_rq[tid]) : sum); }
 }
 void launch_q35_ab(const Q35AbArgs& A, cudaStream_t st) {
-  if (q35_pf_launch(A.M)) { launch_k(q35_ab_pf_kernel<6>, dim3(96 / 6, (A.M + 15) / 16), dim3(128), 0, st, A); return; } launch_k(q35_ab_kernel, dim3(96, (A.M + 31) / 32), dim3(128), 0, st, A); }
+  if (q35_pf_launch(A.M)) { constexpr int R = Q35_SMALL ? 4 : 6; launch_k(q35_ab_pf_kernel<R>, dim3(Q35_AB / R, (A.M + 15) / 16), dim3(128), 0, st, A); return; } launch_k(q35_ab_kernel, dim3(Q35_AB, (A.M + 31) / 32), dim3(128), 0, st, A); }
 
 template <int AR = 32> __device__ __forceinline__ void q35_ab_row1(const Q35AbArgs& A, int r) {
   
@@ -794,18 +805,18 @@ template <int AR = 32> __device__ __forceinline__ void q35_ab_row1(const Q35AbAr
   
   __shared__ float s_red1[AR][4], s_r1[AR];                               // AR = most rows (64: passes of 33..64 rows)
   const int g = threadIdx.x >> 7, tid = threadIdx.x & 127, nt = A.M;
-  const uint16_t* w = r < 48 ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - 48) * Q35_H;
-  uint4 wv[5];
+  const uint16_t* w = r < Q35_GV ? A.wb + (size_t)r * Q35_H : A.wa + (size_t)(r - Q35_GV) * Q35_H;
+  uint4 wv[Q35_AB_VECS];
   #pragma unroll
-  for (int j = 0; j < 5; ++j) wv[j] = __ldg(reinterpret_cast<const uint4*>(w) + tid + 128 * j);
+  for (int j = 0; j < Q35_AB_VECS; ++j) wv[j] = q35_ab_w(w, tid + 128 * j);
   if (A.S && threadIdx.x < nt) s_r1[threadIdx.x] = q35_xsm_r(A.S + (size_t)threadIdx.x * Q35_SST, A.eps);
   for (int t = g; t < nt; t += 4) {
-    uint4 xv[5];
+    uint4 xv[Q35_AB_VECS];
     #pragma unroll
-    for (int j = 0; j < 5; ++j) xv[j] = q35_ab_x(A, t, tid + 128 * j);
+    for (int j = 0; j < Q35_AB_VECS; ++j) xv[j] = q35_ab_x(A, t, tid + 128 * j);
     float acc = 0.f;
     #pragma unroll
-    for (int j = 0; j < 5; ++j) {
+    for (int j = 0; j < Q35_AB_VECS; ++j) {
       const unsigned wa[4] = {wv[j].x, wv[j].y, wv[j].z, wv[j].w}, xa[4] = {xv[j].x, xv[j].y, xv[j].z, xv[j].w};
       #pragma unroll
       for (int e = 0; e < 4; ++e) {
@@ -819,7 +830,7 @@ template <int AR = 32> __device__ __forceinline__ void q35_ab_row1(const Q35AbAr
   __syncthreads();
   if (threadIdx.x < nt) { const int t = threadIdx.x;
     const float sum = __fadd_rn(__fadd_rn(__fadd_rn(s_red1[t][0], s_red1[t][1]), s_red1[t][2]), s_red1[t][3]);
-    A.ab[(size_t)t * 96 + r] = rbf(A.S ? __fmul_rn(sum, s_r1[t]) : sum); }
+    A.ab[(size_t)t * Q35_AB + r] = rbf(A.S ? __fmul_rn(sum, s_r1[t]) : sum); }
 }
 
 template <int AR = 32> __global__ void __launch_bounds__(512) q35_mix_kernel(Q35MixArgs A) {
@@ -827,7 +838,7 @@ template <int AR = 32> __global__ void __launch_bounds__(512) q35_mix_kernel(Q35
   
   
   constexpr int NB = Q35_CONV / 512 + Q35_Z / 512;
-  const int tid = threadIdx.x, nab = A.with_ab ? 96 : 0;                  
+  const int tid = threadIdx.x, nab = A.with_ab ? Q35_AB : 0;
   if ((int)blockIdx.x < nab) {                                            
     q35_ab_row1<AR>(A.ab, blockIdx.x);
     return;
@@ -857,8 +868,8 @@ void launch_q35_mix(const Q35MixArgs& A, cudaStream_t st) {
   if (q35_pf_launch(A.M) && A.xsm.us && A.xsm.mode == 3 && !A.with_ab && !A.pf.p[0]) {   
     const int tasks = (Q35_CONV / 512 + Q35_Z / 512) * ((A.M + Q35_PF_TPW - 1) / Q35_PF_TPW); launch_k(q35_mix_pf_kernel, dim3((tasks + 7) / 8), dim3(256), 0, st, A); return; }
   if (A.with_ab && A.M > 64) throw std::runtime_error("launch_q35_mix: fused a / b gates need M <= 64");
-  if (A.with_ab && A.M > 32) { launch_k(q35_mix_kernel<64>, dim3((Q35_CONV / 512 + Q35_Z / 512) * A.M + 96), dim3(512), 0, st, A); return; }   // the same sums per row
-  launch_k(q35_mix_kernel<32>, dim3((Q35_CONV / 512 + Q35_Z / 512) * A.M + (A.with_ab ? 96 : 0)), dim3(512), 0, st, A); }
+  if (A.with_ab && A.M > 32) { launch_k(q35_mix_kernel<64>, dim3((Q35_CONV / 512 + Q35_Z / 512) * A.M + Q35_AB), dim3(512), 0, st, A); return; }   // the same sums per row
+  launch_k(q35_mix_kernel<32>, dim3((Q35_CONV / 512 + Q35_Z / 512) * A.M + (A.with_ab ? Q35_AB : 0)), dim3(512), 0, st, A); }
 
 
 __global__ void __launch_bounds__(128) q35_conv_kernel(Q35ConvArgs A) {
@@ -882,7 +893,7 @@ __global__ void __launch_bounds__(128) q35_conv_kernel(Q35ConvArgs A) {
   if (kind == 2) {
     A.v[((size_t)t * Q35_GV + head) * Q35_GD + tid] = act;
     if (tid == 0) {
-      const float b = A.ab[(size_t)t * 96 + head], a = A.ab[(size_t)t * 96 + 48 + head];
+      const float b = A.ab[(size_t)t * Q35_AB + head], a = A.ab[(size_t)t * Q35_AB + Q35_GV + head];
       A.beta[(size_t)t * Q35_GV + head] = rbf(q35_sigmoid(b));
       const float sp_in = __fadd_rn(a, bf2f(c_dt));
       const float sp = q35_softplus(sp_in);                                                

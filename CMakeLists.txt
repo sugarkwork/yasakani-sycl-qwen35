@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
+# Fork modifications: optional SYCL backend and Qwen3.5-4B/9B CUDA builds.
+option(YSKN_ENABLE_SYCL "Build the experimental Qwen3.5-4B/9B SYCL backend" OFF)
+if(YSKN_ENABLE_SYCL)
+  project(yasakani_sycl LANGUAGES CXX)
+  add_subdirectory(src/sycl)
+  return()
+endif()
 # GPU code for RTX 30 (sm_86), RTX 40 (sm_89) and RTX 50 (sm_120) in one library. PTX is kept for compute_120 only, so that
 # newer 12.x GPUs can compile it at load time. To build one architecture, pass e.g. -DCMAKE_CUDA_ARCHITECTURES=120 (or 86, 89).
 set(CMAKE_CUDA_ARCHITECTURES "86-real;89-real;120" CACHE STRING "CUDA architectures to build (default: RTX 30, 40 and 50 series)")
@@ -51,7 +58,16 @@ add_library(yskn SHARED
   src/test_hooks.cpp
 )
 target_include_directories(yskn PRIVATE src include third_party)
-target_compile_definitions(yskn PRIVATE YSKN_BUILD YSKN_KVX_MODE=3 NOMINMAX _CRT_SECURE_NO_WARNINGS)
+set(YSKN_Q35_HIDDEN "5120" CACHE STRING "Qwen dense text hidden size (2560, 4096 or 5120)")
+if(YSKN_Q35_HIDDEN STREQUAL "5120")
+  set(YSKN_KVX_MODE 3)
+elseif(YSKN_Q35_HIDDEN MATCHES "^(2560|4096)$")
+  set(YSKN_KVX_MODE 0)
+else()
+  message(FATAL_ERROR "Unsupported Qwen dense text hidden size: ${YSKN_Q35_HIDDEN}")
+endif()
+target_compile_definitions(yskn PRIVATE YSKN_BUILD YSKN_KVX_MODE=${YSKN_KVX_MODE}
+  YSKN_Q35_HIDDEN=${YSKN_Q35_HIDDEN} NOMINMAX _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(yskn PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:/utf-8;/bigobj;/O2;/d1trimfile:${CMAKE_SOURCE_DIR}/>

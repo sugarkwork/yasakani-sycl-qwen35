@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 the YASAKANI authors
+// Modified in this fork to handle the Qwen3.5-4B/9B projection shapes.
 
 
 
@@ -51,7 +52,7 @@ __global__ void __launch_bounds__(128) wk_conv_kernel(WkConvArgs W) {
   if (kind == 2) {
     A.v[((size_t)t * Q35_GV + head) * Q35_GD + tid] = act;
     if (tid == 0) {
-      const float b = A.ab[(size_t)t * 96 + head], a = A.ab[(size_t)t * 96 + 48 + head];
+      const float b = A.ab[(size_t)t * Q35_AB + head], a = A.ab[(size_t)t * Q35_AB + Q35_GV + head];
       A.beta[(size_t)t * Q35_GV + head] = rbf(q35_sigmoid(b));
       const float sp_in = __fadd_rn(a, bf2f(c_dt));
       const float sp = q35_softplus(sp_in);

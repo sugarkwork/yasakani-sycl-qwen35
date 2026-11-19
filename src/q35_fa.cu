@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 the YASAKANI authors
+// Modified in this fork to handle the Qwen3.5-4B/9B attention shapes.
 #include "pdl.cuh"
 #include <cuda_bf16.h>
 #include "q35.hpp"
@@ -305,7 +306,8 @@ void launch_q35_fa(const Q35AttnArgs& A, cudaStream_t st) {
   static bool attr = false;
   if (!attr) { cudaFuncSetAttribute(q35_fa_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, FA_SMEM);
               cudaFuncSetAttribute(q35_fa8_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, FA_SMEM); attr = true; }
-  if (A.k8) launch_k(q35_fa8_kernel, dim3((A.M + 15) / 16, A.splits, Q35_KVH), dim3(192), (size_t)FA_SMEM, st, A);
-  else launch_k(q35_fa_kernel, dim3((A.M + 15) / 16, A.splits, Q35_KVH), dim3(192), (size_t)FA_SMEM, st, A);
+  constexpr int threads = 32 * (Q35_NH / Q35_KVH);
+  if (A.k8) launch_k(q35_fa8_kernel, dim3((A.M + 15) / 16, A.splits, Q35_KVH), dim3(threads), (size_t)FA_SMEM, st, A);
+  else launch_k(q35_fa_kernel, dim3((A.M + 15) / 16, A.splits, Q35_KVH), dim3(threads), (size_t)FA_SMEM, st, A);
 }
 }  

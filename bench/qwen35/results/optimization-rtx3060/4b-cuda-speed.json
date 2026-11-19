@@ -1,0 +1,347 @@
+{
+  "model": "Qwen3.5-4B",
+  "build": "cuda",
+  "pack": "speed",
+  "capture": "optimization-rtx3060",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "driver": "610.88",
+  "memory_total_mib": 12288,
+  "backend": "cuda",
+  "manifest_sha256": "ecf0ee3caa79859221f116e53d3e741ae0cc5acbe5385e746d01d99981aeb5ac",
+  "model_sha256": "f767112768e541af5aafc814510568a23bcf9aa416bc1434caa52fe598cf4fde",
+  "dll_sha256": "91afdf07a85808e0df6725e6f53752817dce4c6be4bf075223b57cfd10a066a1",
+  "context": 2048,
+  "kv": "BF16",
+  "load_s": 1.372203700011596,
+  "vram": {
+    "idle_mib": 4673,
+    "loaded_mib": 7199,
+    "peak_mib": 7235,
+    "peak_delta_mib": 2562
+  },
+  "accuracy": {
+    "arithmetic": {
+      "correct": 8,
+      "total": 12,
+      "median_ttft_s": 0.02065069999662228,
+      "median_decode_tps": 121.58720461522947
+    },
+    "reading": {
+      "correct": 3,
+      "total": 3,
+      "median_ttft_s": 0.3650645000161603,
+      "median_decode_tps": 119.82505542904532
+    }
+  },
+  "cases": [
+    {
+      "name": "a01",
+      "kind": "arithmetic",
+      "expected": 1193,
+      "answer": "1193",
+      "correct": true,
+      "output_ids": [
+        16,
+        16,
+        24,
+        18,
+        248046
+      ],
+      "input_tokens": 34,
+      "ttft_s": 0.02068750001490116,
+      "decode_tps": 109.21322786893538
+    },
+    {
+      "name": "a02",
+      "kind": "arithmetic",
+      "expected": 728,
+      "answer": "728",
+      "correct": true,
+      "output_ids": [
+        22,
+        17,
+        23,
+        248046
+      ],
+      "input_tokens": 34,
+      "ttft_s": 0.020708900003228337,
+      "decode_tps": 117.63690973108417
+    },
+    {
+      "name": "a03",
+      "kind": "arithmetic",
+      "expected": 2961,
+      "answer": "2961",
+      "correct": true,
+      "output_ids": [
+        17,
+        24,
+        21,
+        16,
+        248046
+      ],
+      "input_tokens": 32,
+      "ttft_s": 0.021983100043144077,
+      "decode_tps": 117.77383890601982
+    },
+    {
+      "name": "a04",
+      "kind": "arithmetic",
+      "expected": 45,
+      "answer": "45",
+      "correct": true,
+      "output_ids": [
+        19,
+        20,
+        248046
+      ],
+      "input_tokens": 35,
+      "ttft_s": 0.022028399980627,
+      "decode_tps": 122.13815041904084
+    },
+    {
+      "name": "a05",
+      "kind": "arithmetic",
+      "expected": 9,
+      "answer": "9",
+      "correct": true,
+      "output_ids": [
+        24,
+        248046
+      ],
+      "input_tokens": 34,
+      "ttft_s": 0.019761200004722923,
+      "decode_tps": 122.47247420163272
+    },
+    {
+      "name": "a06",
+      "kind": "arithmetic",
+      "expected": -37,
+      "answer": "-37",
+      "correct": true,
+      "output_ids": [
+        12,
+        18,
+        22,
+        248046
+      ],
+      "input_tokens": 32,
+      "ttft_s": 0.020613899978343397,
+      "decode_tps": 121.76214169453978
+    },
+    {
+      "name": "a07",
+      "kind": "arithmetic",
+      "expected": 432,
+      "answer": "432",
+      "correct": true,
+      "output_ids": [
+        19,
+        18,
+        17,
+        248046
+      ],
+      "input_tokens": 32,
+      "ttft_s": 0.01877169997896999,
+      "decode_tps": 121.90414261790137
+    },
+    {
+      "name": "a08",
+      "kind": "arithmetic",
+      "expected": 54,
+      "answer": "54",
+      "correct": true,
+      "output_ids": [
+        20,
+        19,
+        248046
+      ],
+      "input_tokens": 35,
+      "ttft_s": 0.019823300011921674,
+      "decode_tps": 122.04051753302265
+    },
+    {
+      "name": "a09",
+      "kind": "arithmetic",
+      "expected": 15,
+      "answer": "90",
+      "correct": false,
+      "output_ids": [
+        24,
+        15,
+        248046
+      ],
+      "input_tokens": 38,
+      "ttft_s": 0.023271900019608438,
+      "decode_tps": 121.41226753591916
+    },
+    {
+      "name": "a10",
+      "kind": "arithmetic",
+      "expected": 35,
+      "answer": "91 - 56 = 35",
+      "correct": false,
+      "output_ids": [
+        24,
+        16,
+        471,
+        220,
+        20,
+        21,
+        283,
+        220,
+        18,
+        20,
+        248046
+      ],
+      "input_tokens": 34,
+      "ttft_s": 0.01962550001917407,
+      "decode_tps": 118.66098198600547
+    },
+    {
+      "name": "a11",
+      "kind": "arithmetic",
+      "expected": 1550,
+      "answer": "125 × 16 = 2000\n2000 -",
+      "correct": false,
+      "output_ids": [
+        16,
+        17,
+        20,
+        23985,
+        220,
+        16,
+        21,
+        283,
+        220,
+        17,
+        15,
+        15,
+        15,
+        198,
+        17,
+        15,
+        15,
+        15,
+        471,
+        220
+      ],
+      "input_tokens": 38,
+      "ttft_s": 0.02045210002688691,
+      "decode_tps": 120.15323964234912
+    },
+    {
+      "name": "a12",
+      "kind": "arithmetic",
+      "expected": 30,
+      "answer": "45",
+      "correct": false,
+      "output_ids": [
+        19,
+        20,
+        248046
+      ],
+      "input_tokens": 43,
+      "ttft_s": 0.023705400002654642,
+      "decode_tps": 122.24116991069606
+    },
+    {
+      "name": "early",
+      "kind": "reading",
+      "expected": "田中さんは部屋で休憩しています。",
+      "answer": "田中さんは部屋で休憩しています。",
+      "correct": true,
+      "output_ids": [
+        97211,
+        95789,
+        173723,
+        227150,
+        15685,
+        140425,
+        155085,
+        1710,
+        248046
+      ],
+      "input_tokens": 1072,
+      "ttft_s": 0.3669027999858372,
+      "decode_tps": 120.37460567546432
+    },
+    {
+      "name": "middle",
+      "kind": "reading",
+      "expected": "榊原さんは会議室で青い付箋を議事録の写しに貼っています。",
+      "answer": "会議室の机の上に置かれた議事録の写し（原本は赤いファイルに入ったまま）を手に取り、青い付箋をその写しに貼っています。",
+      "correct": true,
+      "output_ids": [
+        247304,
+        96686,
+        15303,
+        95934,
+        229796,
+        96464,
+        190521,
+        98358,
+        95924,
+        238546,
+        15303,
+        96674,
+        14259,
+        9616,
+        101779,
+        14876,
+        99067,
+        16098,
+        161243,
+        236510,
+        155661,
+        7313,
+        28452,
+        157220,
+        150619,
+        5205,
+        96556,
+        16098,
+        96818,
+        247179,
+        28452,
+        55407,
+        96674,
+        14259,
+        19054,
+        100344,
+        151578,
+        1710,
+        248046
+      ],
+      "input_tokens": 1073,
+      "ttft_s": 0.3650645000161603,
+      "decode_tps": 119.82505542904532
+    },
+    {
+      "name": "late",
+      "kind": "reading",
+      "expected": "高橋さんは玄関横で来客用の傘を一本ずつ数えています。",
+      "answer": "玄関横で来客用の傘を一本ずつ数えています。",
+      "correct": true,
+      "output_ids": [
+        247624,
+        98504,
+        15685,
+        95860,
+        96285,
+        160663,
+        247007,
+        28452,
+        110299,
+        163271,
+        96089,
+        198808,
+        1710,
+        248046
+      ],
+      "input_tokens": 1072,
+      "ttft_s": 0.3625804000184871,
+      "decode_tps": 116.99937989175459
+    }
+  ]
+}

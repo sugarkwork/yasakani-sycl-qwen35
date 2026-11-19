@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 the YASAKANI authors
+// Modified in this fork to parameterize model dimensions for Qwen3.5-4B/9B.
 #pragma once
 
 
@@ -10,8 +11,15 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 namespace yskn {
-constexpr int Q35_H = 5120, Q35_NH = 24, Q35_KVH = 4, Q35_HD = 256, Q35_RD = 64;
-constexpr int Q35_GK = 16, Q35_GV = 48, Q35_GD = 128, Q35_CONV = 10240, Q35_Z = Q35_GV * Q35_GD;
+#ifndef YSKN_Q35_HIDDEN
+#define YSKN_Q35_HIDDEN 5120
+#endif
+constexpr int Q35_H = YSKN_Q35_HIDDEN;
+constexpr bool Q35_SMALL = Q35_H != 5120;
+constexpr int Q35_NH = Q35_SMALL ? 16 : 24;
+constexpr int Q35_KVH = 4, Q35_HD = 256, Q35_RD = 64;
+constexpr int Q35_GK = 16, Q35_GV = Q35_SMALL ? 32 : 48, Q35_GD = 128;
+constexpr int Q35_AB = 2 * Q35_GV, Q35_CONV = (2 * Q35_GK + Q35_GV) * Q35_GD, Q35_Z = Q35_GV * Q35_GD;
 
 
 

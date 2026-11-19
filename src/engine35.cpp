@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 the YASAKANI authors
+// Modified in this fork to load Qwen3.5-4B/9B text packs and use BF16 KV.
 #include "engine35.hpp"
 #include <algorithm>
 #include <map>
@@ -215,6 +216,8 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
   if (tbcap_) { tb_rec_ = g_tb_rec; if (!tb_rec_) throw std::runtime_error("YSKN_TB_CAP=1: the KVQ profile has no decode records"); if (!tbf_host().scr) throw std::runtime_error("YSKN_TB_CAP=1 needs the fast encoder (YSKN_TB_FAST=1)"); }
   if (tbf_host().scr) tb_scr_ = dz35<unsigned char>(tbf_scratch_bytes());
 #endif
+  // The small text builds use the plain BF16 KV and attention path.
+  if (Q35_SMALL) { kv8_ = 0; kv_fp16_ = 0; }
   if (kv_fp16_ && kv8_) throw std::runtime_error("FP16 KV requires YSKN_Q35_KV8=0");
   { const char* e = std::getenv("YSKN_Q35_XSUM"); if (e && e[0]) xsm_ = std::atoi(e) != 0;
     const char* p = std::getenv("YSKN_Q35_XSM_PART"); if (p && p[0]) xsm_part_ = std::atoi(p) != 0; }
@@ -238,7 +241,7 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
   m_.c.open(path); m_.cfg = m_.c.model; const ModelDesc& c = m_.cfg;
   if (c.arch != "qwen3_5") throw std::runtime_error("Engine35: arch " + c.arch);
   if (c.hidden != Q35_H || c.heads != Q35_NH || c.kv_heads != Q35_KVH || c.head_dim != Q35_HD || c.ffn % 512)
-    throw std::runtime_error("Engine35: kernels are built for the 27B shapes (hidden 5120, 24 / 4 heads of 256)");
+    throw std::runtime_error("Engine35: model shape does not match this DLL (expected hidden " + std::to_string(Q35_H) + ")");
   V_ = c.vocab; H_ = c.hidden; F_ = c.ffn; nlayers_ = c.layers; eps_ = c.eps;
   max_ctx_ = ((max_ctx + 63) / 64) * 64; m_.max_ctx = max_ctx_;
   { int dev = 0; cudaGetDevice(&dev); cudaDeviceGetAttribute(&m_.sm_count, cudaDevAttrMultiProcessorCount, dev); }   // the GPU being opened, not device 0
@@ -248,6 +251,9 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
   const json& J = m_.c.raw.at("model");
   const json& types = J.at("layer_types");
   if ((int)types.size() != nlayers_) throw std::runtime_error("Engine35: layer_types size");
+  if (Q35_SMALL && (c.layers != 32 || c.ffn != (Q35_H == 2560 ? 9216 : 12288)
+      || J.at("linear_num_key_heads").get<int>() != Q35_GK || J.at("linear_num_value_heads").get<int>() != Q35_GV))
+    throw std::runtime_error("Engine35: model is not the configured Qwen3.5 text size");
   L_.resize(nlayers_);
   int cap_ord = 0, cap_pk_k = 0, cap_pk_v = 0, cap_nfull = 0; size_t cap_bytes = 0, cap_bytes_i8ref = 0;
 #if YSKN_KVX_MODE == 3
@@ -282,7 +288,7 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
       Y.conv = vec(p + "linear_attn.conv1d", (size_t)Q35_CONV * 4); Y.A_log = vec(p + "linear_attn.A_log", Q35_GV);
       Y.dt_bias = vec(p + "linear_attn.dt_bias", Q35_GV); Y.gnorm = vec(p + "linear_attn.norm", Q35_GD);
       Y.S = dz35<float>((size_t)Q35_GV * Q35_GD * Q35_GD * 4); Y.hist = dz35<uint16_t>((size_t)3 * Q35_CONV * 2);
-      Y.pmix = dz35<uint16_t>((size_t)Mmax_ * Q35_CONV * 2); Y.pab = dz35<float>((size_t)Mmax_ * 96 * 4);
+      Y.pmix = dz35<uint16_t>((size_t)Mmax_ * Q35_CONV * 2); Y.pab = dz35<float>((size_t)Mmax_ * Q35_AB * 4);
       Y.tq = dz35<float>((size_t)HM_ * Q35_GK * Q35_GD * 4); Y.tk = dz35<float>((size_t)HM_ * Q35_GK * Q35_GD * 4);   
       Y.tv = dz35<float>((size_t)HM_ * Q35_Z * 4); Y.tbeta = dz35<float>((size_t)HM_ * Q35_GV * 4); Y.tg = dz35<float>((size_t)HM_ * Q35_GV * 4);
     }
@@ -356,7 +362,7 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
   { const int ns = std::max(splits_, atx_splits_);
     pm_ = dz35<float>((size_t)Mmax_ * ns * Q35_NH * 4); pl_ = dz35<float>((size_t)Mmax_ * ns * Q35_NH * 4); pacc_ = dz35<float>((size_t)Mmax_ * ns * Q35_NH * Q35_HD * 4); }
   pos_slices_ = dz35<int>(64 * 4); mtp_pos_slices_ = dz35<int>(64 * 4);
-  if (Pmax_ > Mmax_) { pmix_big_ = dz35<uint16_t>((size_t)Pmax_ * Q35_CONV * 2); pab_big_ = dz35<float>((size_t)Pmax_ * 96 * 4); }
+  if (Pmax_ > Mmax_) { pmix_big_ = dz35<uint16_t>((size_t)Pmax_ * Q35_CONV * 2); pab_big_ = dz35<float>((size_t)Pmax_ * Q35_AB * 4); }
   rope_ = dz35<float2>((size_t)max_ctx_ * (Q35_RD / 2) * sizeof(float2)); launch_q35_rope_table(rope_, max_ctx_, st_);
   logits_ = dz35<float>((size_t)HM_ * V_ * 4); blk_val_ = dz35<float>((size_t)HM_ * 256 * 4); blk_idx_ = dz35<int>((size_t)HM_ * 256 * 4);
   blk_max_ = dz35<float>((size_t)HM_ * 256 * 4); blk_sum_ = dz35<float>((size_t)HM_ * 256 * 4);
@@ -377,6 +383,7 @@ Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(fla
   { const char* f = std::getenv("YSKN_Q35_FLOW_TRACE"); if (f && f[0] == '1') flow_trace_ = dz35<unsigned long long>((size_t)4 * 16384 * 8); }
   flow_prepare();
   { const char* u = std::getenv("YSKN_Q35_ATX"); if (u && u[0]) atx_ = std::atoi(u); }
+  if (Q35_SMALL) atx_ = 0;
   if (kv_fp16_ && !atx_) throw std::runtime_error("FP16 KV requires ATX attention");
   std::fprintf(stderr, "[KV-PROTOCOL] target_kv=%s\n", kv8_ ? "int8-row-f32-scale" : (kv_fp16_ ? "fp16" : "bf16"));
   { const char* u = std::getenv("YSKN_ATX_VSP"); if (u && u[0]) atx_vsp_ = std::atoi(u); }
@@ -1050,7 +1057,7 @@ void Engine35::lfrow_promote(int src, int dst) {
     std::vector<WkCopy> v;
     for (Q35Layer& Y : L_) {
       if (!Y.full) {
-        v.push_back({(unsigned long long)Y.pmix, Q35_CONV * 2, 0}); v.push_back({(unsigned long long)Y.pab, 96 * 4, 0});
+        v.push_back({(unsigned long long)Y.pmix, Q35_CONV * 2, 0}); v.push_back({(unsigned long long)Y.pab, Q35_AB * 4, 0});
         v.push_back({(unsigned long long)Y.tq, Q35_GK * Q35_GD * 4, 0}); v.push_back({(unsigned long long)Y.tk, Q35_GK * Q35_GD * 4, 0});
         v.push_back({(unsigned long long)Y.tv, Q35_Z * 4, 0}); v.push_back({(unsigned long long)Y.tbeta, Q35_GV * 4, 0});
         v.push_back({(unsigned long long)Y.tg, Q35_GV * 4, 0});
@@ -1855,6 +1862,7 @@ int Engine35::state_hash(uint64_t* out, int max_out) {
 }
 
 void Engine35::load_bdraft(const std::string& path) {
+  if (Q35_SMALL) throw std::runtime_error("No draft is configured for the small Qwen3.5 build");
   DevMemScope instance_owner(this);
   if (shared_weights_) {
     const auto f = std::filesystem::canonical(path);

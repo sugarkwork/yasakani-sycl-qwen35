@@ -3,6 +3,12 @@
 YASAKANI itself is licensed under the Apache License 2.0 (see `LICENSE` and `NOTICE`). This file lists what else is in the release, what is
 only required, and which published work it builds on.
 
+The SYCL Qwen3.5 source fork refers to the Qwen3.5-4B and Qwen3.5-9B
+checkpoints for conversion and benchmarking. The weights and tokenizer files
+are provided separately by Qwen. Both pinned revisions carry Apache-2.0
+licenses. See [the model sources and revisions](docs/WINDOWS-QWEN35.md#model-packs).
+The SYCL build uses Intel LLVM/DPC++ and its CUDA adapter from the toolchain.
+
 ## Redistributed with YASAKANI
 
 ### Qwen3.8-27B (model, tokenizer and chat template)

@@ -3,6 +3,12 @@ Copyright 2026 the YASAKANI authors
 
 This product includes software developed by the YASAKANI authors.
 
+The YASAKANI SYCL Qwen3.5 source fork adds experimental SYCL and CUDA text
+inference builds for Qwen3.5-4B and Qwen3.5-9B.
+The model distribution notices below are retained from upstream YASAKANI.
+The source fork supplies code and benchmark records. Model weights and
+tokenizer files are obtained separately from their publishers.
+
 Model files distributed with this software
 ------------------------------------------
 The model files are distributed separately, in two model folders (the quality model and the fastest model).

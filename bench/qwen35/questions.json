@@ -1,0 +1,139 @@
+{
+  "instruction": "次の記録を読み、最後の質問に本文に基づいて日本語の一文で答えてください。人物の動作と場所を含めてください。",
+  "sizes": {
+    "4b": {
+      "body_tokens": 1020,
+      "questions": [
+        {
+          "zone": "early",
+          "question": "田中さんは何をしていますか？",
+          "expected": "田中さんは部屋で休憩しています。",
+          "facts": [
+            [
+              "部屋"
+            ],
+            [
+              "休憩",
+              "休んで"
+            ]
+          ],
+          "prompt_tokens": 1072,
+          "answer_position_token": 43
+        },
+        {
+          "zone": "middle",
+          "question": "榊原さんは何をしていますか？",
+          "expected": "榊原さんは会議室で青い付箋を議事録の写しに貼っています。",
+          "facts": [
+            [
+              "会議室"
+            ],
+            [
+              "青い付箋",
+              "青色の付箋"
+            ],
+            [
+              "議事録"
+            ],
+            [
+              "写し",
+              "コピー"
+            ],
+            [
+              "貼",
+              "はって"
+            ]
+          ],
+          "prompt_tokens": 1073,
+          "answer_position_token": 457
+        },
+        {
+          "zone": "late",
+          "question": "高橋さんは何をしていますか？",
+          "expected": "高橋さんは玄関横で来客用の傘を一本ずつ数えています。",
+          "facts": [
+            [
+              "玄関"
+            ],
+            [
+              "傘"
+            ],
+            [
+              "数え",
+              "かぞえ"
+            ]
+          ],
+          "prompt_tokens": 1072,
+          "answer_position_token": 959
+        }
+      ]
+    },
+    "9b": {
+      "body_tokens": 1020,
+      "questions": [
+        {
+          "zone": "early",
+          "question": "田中さんは何をしていますか？",
+          "expected": "田中さんは部屋で休憩しています。",
+          "facts": [
+            [
+              "部屋"
+            ],
+            [
+              "休憩",
+              "休んで"
+            ]
+          ],
+          "prompt_tokens": 1072,
+          "answer_position_token": 43
+        },
+        {
+          "zone": "middle",
+          "question": "榊原さんは何をしていますか？",
+          "expected": "榊原さんは会議室で青い付箋を議事録の写しに貼っています。",
+          "facts": [
+            [
+              "会議室"
+            ],
+            [
+              "青い付箋",
+              "青色の付箋"
+            ],
+            [
+              "議事録"
+            ],
+            [
+              "写し",
+              "コピー"
+            ],
+            [
+              "貼",
+              "はって"
+            ]
+          ],
+          "prompt_tokens": 1073,
+          "answer_position_token": 457
+        },
+        {
+          "zone": "late",
+          "question": "高橋さんは何をしていますか？",
+          "expected": "高橋さんは玄関横で来客用の傘を一本ずつ数えています。",
+          "facts": [
+            [
+              "玄関"
+            ],
+            [
+              "傘"
+            ],
+            [
+              "数え",
+              "かぞえ"
+            ]
+          ],
+          "prompt_tokens": 1072,
+          "answer_position_token": 959
+        }
+      ]
+    }
+  }
+}
