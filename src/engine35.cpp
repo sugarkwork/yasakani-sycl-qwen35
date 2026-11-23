@@ -190,6 +190,7 @@ void Engine35::ensure_part(size_t floats) {
 }
 
 Engine35::Engine35(const std::string& path, int max_ctx, int flags) : flags_(flags) {
+  if (const char* value = std::getenv("YSKN_Q35_G6_WHOLE_DOWN")) whole_down_g6_ = std::strcmp(value, "1") == 0;
   DevMemScope dm_scope(this);
   cudaStreamCreateWithFlags(&st_, cudaStreamNonBlocking);
   cudaStreamCreateWithFlags(&st2_, cudaStreamNonBlocking); cudaEventCreateWithFlags(&ev_v_, cudaEventDisableTiming); cudaEventCreateWithFlags(&ev_rp_, cudaEventDisableTiming);
@@ -452,6 +453,24 @@ void Engine35::gemv(std::initializer_list<DevTensor*> ts, int M, bool normed, co
   if (xw) { gemv_xw(P); return; }
   if ((pfa_ && M > Mmax_) || (xsmc_ && M > 16)) {                       
     if (!pfa_eligible(P)) throw std::runtime_error("Engine35: GEMM launch not PFA-eligible");
+    // For the 9B down projection, one CTA per 64x128 output tile lets
+    // each CTA finish all K groups without using the partial buffers.
+    // The stock G6 launch still stages uncached weights on this stream.
+    if (Q35_H == 4096 && whole_down_g6_ && P.n_seg == 1 && M >= 256 &&
+        P.seg[0].t.N == 4096 && P.seg[0].t.Kc == 12288 && !P.xsm_S) {
+      const int old_resident = g6_.resident[2];
+      const int tiles = ((M + 63) / 64) * (4096 / 128);
+      const int waves = old_resident > 0 ? (tiles + old_resident - 1) / old_resident : 0;
+      if (waves > 1 && 10LL * tiles >= 9LL * waves * old_resident) {
+        struct Restore {
+          int& slot;
+          int old;
+          ~Restore() { slot = old; }
+        } restore{g6_.resident[2], old_resident};
+        g6_.resident[2] = tiles;
+        if (launch_q35_g6(P, g6_, smp_p_.pm, st_)) return;
+      }
+    }
     if (launch_q35_g6(P, g6_, smp_p_.pm, st_)) return;
     launch_pfa(P, pfa_, pfa_wpc_, st_); return; }
   if (!lnord_eligible(P)) throw std::runtime_error("Engine35: GEMV launch not LNORD-eligible");

@@ -265,6 +265,7 @@ private:
   int pfa_ = 1, pfa_wpc_ = 0;   
   int nwk(const DevTensor& t, int M) const { return (pfa_ && M > Mmax_) ? 1 : t.dev.n_workers; }   
   int xsm_ = 1;          
+  bool whole_down_g6_ = false;
   Q35G6Workspace g6_; 
   bool xsmc_ = false;    
   float *us_ = nullptr, *S_ = nullptr, *mtp_part_ = nullptr;   
